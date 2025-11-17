@@ -1,0 +1,7 @@
+Glass3
+Metal Can
+Net3
+PET
+Plastic
+Plastic Bag
+Styrofoam3

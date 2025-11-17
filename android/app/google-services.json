@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "305164950366",
+    "project_id": "marinescope-aeb64",
+    "storage_bucket": "marinescope-aeb64.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:305164950366:android:d89e62f97f19963c7b0dcf",
+        "android_client_info": {
+          "package_name": "com.marinescope.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCT_ZTbUNbB6oixqrLH8zwcFsDVvrFLK9E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
