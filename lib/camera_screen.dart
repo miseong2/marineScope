@@ -83,7 +83,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
       // 계산 과정에서 값이 뒤집히는 경우가 있어, -1을 곱해 최종 보정합니다.
       // 이 값은 폰 기종마다 다를 수 있으므로, 테스트 후 조정이 필요할 수 있습니다.
-      _pitch *= -1;
+      //_pitch *= -1;
     });
   }
 
@@ -109,6 +109,7 @@ class _CameraScreenState extends State<CameraScreen> {
       // 촬영 순간의 기울기와 방향 값을 캡처
       final capturedPitch = _pitch;
       final capturedAzimuth = _direction ?? 0.0; // null일 경우 기본값 0.0 사용
+      print("pitch: $capturedPitch, azimuth: $capturedAzimuth");
 
       if (!mounted) return;
 

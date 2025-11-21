@@ -1,5 +1,5 @@
 Glass3
-Metal Can
+Metal
 Net3
 PET
 Plastic

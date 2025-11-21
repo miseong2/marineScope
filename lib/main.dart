@@ -51,6 +51,65 @@ class MapScreen extends StatefulWidget {
 }
 
 class _MapScreenState extends State<MapScreen> {
+  static const Map<String, double> KNOWN_OBJECT_SIZES_CM = {
+    'Styrofoam3': 30.0,
+    'PET': 21.0,
+    'Plastic': 25.0,
+    'Glass3': 15.0,
+    'Metal': 20.0,
+    'Plastic Bag': 30.0,
+    'Net3': 100.0, // 그물은 매우 가변적이므로 큰 값을 기준으로 설정
+  };
+
+// [상수 2] 카메라의 유효 초점 거리 (단위: 픽셀)
+// (640 / 2) / tan(85도 / 2 * pi / 180) 공식을 통해 계산된 근사치.
+// 갤럭시 S23 기준 (화각 85도, YOLO 입력 640x640)
+  static const double EFFECTIVE_FOCAL_LENGTH_PIXELS = 381.0;
+
+// [상수 3] YOLO 모델의 입력 이미지 크기
+  static const double YOLO_INPUT_IMAGE_SIZE = 640.0;
+
+
+// [함수 1] AI 비전 기반 절대 거리(빗변) 계산 함수
+  double? _calculateAiDistance(Map<String, dynamic> detection) {
+    final String className = detection['class'];
+    final List<dynamic> box = detection['box']; // 정규화된 [center_x, center_y, width, height]
+
+    final double knownSizeCm = KNOWN_OBJECT_SIZES_CM[className]!;
+
+    // 2. 바운딩 박스의 픽셀 크기 계산
+    // box[2]는 너비, box[3]은 높이 (0.0 ~ 1.0 사이의 정규화된 값)
+    // 이 중 더 긴 쪽을 기준으로 사용 (폐기물이 옆으로 누워있을 경우 대비)
+    final double longSideNormalized = (box[2] > box[3]) ? box[2] : box[3];
+    final double objectPixelSize = longSideNormalized * YOLO_INPUT_IMAGE_SIZE;
+
+    if (objectPixelSize <= 0) return null;
+
+    // 3. 거리 계산 공식 적용 (결과는 cm 단위)
+    // 거리(cm) = (실제 크기(cm) * 초점 거리(px)) / 이미지 위 크기(px)
+    final double distanceCm = (knownSizeCm * EFFECTIVE_FOCAL_LENGTH_PIXELS) / objectPixelSize;
+    print("distanceM = ${distanceCm / 100.0}");
+    // 4. 단위를 cm에서 m로 변환하여 반환
+    return distanceCm / 100.0;
+  }
+
+// [함수 2] 센서(기울기)를 이용해 수평 거리(밑변)로 변환하는 함수
+  double _calculateHorizontalDistance(double absoluteDistance, double pitch) {
+    // 1. [핵심 변환 로직] 센서 좌표계(90~270)를 물리적 각도(0~90)로 변환합니다.
+    //    - pitch가 180(수평)이면 -> (180 - 180).abs() = 0도
+    //    - pitch가 90(수직 아래)이면 -> (90 - 180).abs() = 90도
+    //    - pitch가 152.5이면 -> (152.5 - 180).abs() = 27.5도 (수평선과의 실제 각도)
+    final double angleFromHorizontal = (pitch - 180).abs();
+
+    // 2. 변환된 물리적 각도를 라디안으로 변환합니다.
+    final double angleRad = angleFromHorizontal * (pi / 180.0);
+
+    // 3. cos 함수로 최종 수평 거리를 계산합니다.
+    //    이제 불필요한 안전장치는 필요 없습니다.
+    final double horizontalDistance = absoluteDistance * cos(angleRad);
+    return horizontalDistance;
+  }
+
   final Completer<GoogleMapController> _controller = Completer();
   static const CameraPosition _initialPosition = CameraPosition(
     target: LatLng(37.5665, 126.9780),
@@ -156,8 +215,15 @@ class _MapScreenState extends State<MapScreen> {
       }
 
       if (maxScore > 0.25) { // 신뢰도 임계값
+        // 1. [수정] 먼저 변수에 이름을 저장합니다.
+        final String detectedClass = _labels![maxScoreIndex].trim();
+
+        // 2. [추가] "스파이 코드"로 실제 이름을 콘솔에 출력합니다.
+        print("AI 모델이 감지한 실제 클래스 이름: [$detectedClass]");
+
+        // 3. [수정] 저장된 변수를 사용해 맵에 추가합니다.
         detections.add({
-          'class': _labels![maxScoreIndex].trim(),
+          'class': detectedClass,
           'confidence': maxScore,
           'box': [ // 정규화된 [center_x, center_y, width, height]
             transposedOutput[0][i],
@@ -228,9 +294,10 @@ class _MapScreenState extends State<MapScreen> {
       floatingActionButton: FloatingActionButton.extended(
         // main.dart의 FloatingActionButton.extended 내부 onPressed 로직을 이걸로 덮어쓰세요.
 
+        // main.dart의 FloatingActionButton.extended 내부 onPressed 로직 전체를 이걸로 덮어쓰세요.
+
         onPressed: () async {
           try {
-            // 1. AI 모델 로딩 확인 (기존 로직 유지)
             if (_interpreter == null || _labels == null) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text("AI 모델이 아직 로딩 중입니다.")),
@@ -238,7 +305,6 @@ class _MapScreenState extends State<MapScreen> {
               return;
             }
 
-            // 2. 카메라 스크린으로 이동하여 촬영 (기존 로직 유지)
             final resultData = await Navigator.push<Map<String, dynamic>>(
               context,
               MaterialPageRoute(
@@ -246,11 +312,8 @@ class _MapScreenState extends State<MapScreen> {
               ),
             );
 
-            // 3. 촬영 결과 처리 (기존 로직 유지)
             if (resultData != null) {
               final String imagePath = resultData['imagePath'];
-
-              // AI 모델 실행
               List<Map<String, dynamic>>? detections = await _runRealYoloModel(imagePath);
 
               if (detections == null || detections.isEmpty) {
@@ -262,9 +325,33 @@ class _MapScreenState extends State<MapScreen> {
                 return;
               }
 
+              // [디버깅 로그 시작] ---------------------------------------------
+              print("-----------[데이터 추적 시작]-----------");
+              final double pitch = resultData['pitch'];
+              print("1. CameraScreen에서 전달받은 Pitch 값: $pitch");
+
+              for (var detection in detections) {
+                final String className = detection['class'];
+                print("2. '$className'에 대한 거리 계산 시작...");
+
+                final double? absoluteDistance = _calculateAiDistance(detection);
+                print("3. 계산된 절대 거리(빗변): $absoluteDistance");
+
+                if (absoluteDistance != null) {
+                  final double horizontalDistance = _calculateHorizontalDistance(absoluteDistance, pitch);
+                  print("4. 계산된 최종 수평 거리(밑변): $horizontalDistance");
+                  detection['distance'] = horizontalDistance;
+                } else {
+                  print("4. 절대 거리 계산 실패! (KNOWN_OBJECT_SIZES_CM 확인 필요)");
+                  detection['distance'] = null;
+                }
+                print("-----------------------------------------");
+              }
+              // [디버깅 로그 끝] -----------------------------------------------
+
+
               if (!mounted) return;
 
-              // 4. 미리보기 화면으로 이동하여 사용자 확인 받기 (기존 로직 유지)
               final bool? shouldUpload = await Navigator.push<bool>(
                 context,
                 MaterialPageRoute(
@@ -275,38 +362,32 @@ class _MapScreenState extends State<MapScreen> {
                 ),
               );
 
-              // 5. [핵심 수정] 사용자가 '업로드'를 눌렀을 때 서버로 전송
               if (shouldUpload == true) {
-                // 업로드 시에는 가장 신뢰도 높은 결과 하나만 사용
+                // (이하 업로드 로직은 기존과 동일)
                 final bestResult = detections.first;
-
-                // 촬영 시점의 GPS 위치와 방향(Azimuth) 값을 가져옴
+                final double? calculatedDistance = bestResult['distance'];
+                if (calculatedDistance == null || calculatedDistance <= 0) { // 0m도 실패로 간주
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("거리 계산에 실패하여 업로드할 수 없습니다.")),
+                    );
+                  }
+                  return;
+                }
                 final Position startPosition = resultData['position'];
                 final double azimuth = resultData['azimuth'];
-
-                // [기능 1 구현] 임시 거리 계산: 현재 방향으로 10m 앞 좌표 계산
-                // 추후 이 부분이 정교한 AI 거리 계산 로직으로 대체됩니다.
-                const double temporaryDistance = 10.0; // 임시 거리 10m
                 final LatLng correctedCoordinates = _calculateTargetCoordinates(
                   LatLng(startPosition.latitude, startPosition.longitude),
                   azimuth,
-                  temporaryDistance, // 임시 거리 사용
+                  calculatedDistance,
                 );
-
-                // Firebase Storage에 이미지 업로드 후 URL 받아오기
                 String imageUrl = await _uploadImageToStorage(imagePath);
-
-                // Firestore에 모든 정보(좌표, 폐기물 종류, 신뢰도, 이미지URL, 타임스탬프)를 저장
                 await _uploadWasteData(correctedCoordinates, bestResult, imageUrl);
-
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text("${bestResult['class']} 감지! 성공적으로 업로드되었습니다!")),
+                    SnackBar(content: Text("${bestResult['class']}를 약 ${calculatedDistance.toStringAsFixed(1)}m 앞에서 발견! 업로드 완료!")),
                   );
                 }
-              } else {
-                // 사용자가 '다시 찍기'를 누르거나 뒤로 간 경우
-                print("사용자가 업로드를 취소했습니다.");
               }
             }
           } catch (e) {

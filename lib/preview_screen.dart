@@ -74,7 +74,11 @@ class _PreviewScreenState extends State<PreviewScreen> {
                       final scaledWidth = image.width * scale;
                       final scaledHeight = image.height * scale;
 
+                      // preview_screen.dart 파일의 LayoutBuilder 안쪽,
+// List<Widget> boxes = ... 부분을 아래 코드로 완전히 덮어쓰세요.
+
                       List<Widget> boxes = widget.detectionResults.map((result) {
+                        // --- 기존 좌표 계산 로직은 그대로 둡니다 ---
                         final box = result['box'];
                         final double centerX = box[0];
                         final double centerY = box[1];
@@ -86,8 +90,15 @@ class _PreviewScreenState extends State<PreviewScreen> {
                         final double width = w * scaledWidth;
                         final double height = h * scaledHeight;
 
-                        // --- 여기가 핵심 수정 부분입니다 ---
-                        // Positioned 위젯은 하나만 사용하고, 그 안에 Column을 넣어 라벨과 박스를 수직으로 배치합니다.
+                        // [수정 1] 변수 선언은 return 키워드 '앞'에 위치해야 합니다.
+                        final distance = result['distance'] as double?;
+                        String distanceText = '';
+                        if (distance != null) {
+                          distanceText = ' ≈ ${distance.toStringAsFixed(1)}m'; // "≈ 2.5m" 형태로 표시
+                        }
+                        final String labelText = '${result['class']} (${(result['confidence'] * 100).toStringAsFixed(0)}%)';
+
+                        // --- 이제 Positioned 위젯을 반환합니다 ---
                         return Positioned(
                           left: left,
                           top: top, // 박스의 top 위치를 기준으로
@@ -98,8 +109,9 @@ class _PreviewScreenState extends State<PreviewScreen> {
                               Container(
                                 color: Colors.yellow,
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                // [수정 2] Text 위젯에서 위에서 만든 변수들을 사용합니다.
                                 child: Text(
-                                  '${result['class']} (${(result['confidence'] * 100).toStringAsFixed(0)}%)',
+                                  labelText + distanceText, // 클래스, 신뢰도, 거리 정보를 모두 합쳐서 표시
                                   style: const TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.bold),
                                 ),
                               ),
